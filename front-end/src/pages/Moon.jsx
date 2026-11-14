@@ -1,36 +1,32 @@
 // src/pages/Moon.jsx
 
-import { useState } from "react";
 import MoonMap from "../components/moon/moonmap";
 
-const mockLocations = [
-  {
-    id: "shackleton",
-    name: "Shackleton Crater",
-    coordinates: { x: 300, y: 350, lat: "89.9°S", lon: "0.0°E" },
-  },
-  {
-    id: "mare-tranquillitatis",
-    name: "Mare Tranquillitatis",
-    coordinates: { x: 600, y: 220, lat: "8.5°N", lon: "31.4°E" },
-  },
-  {
-    id: "aristarchus",
-    name: "Aristarchus Plateau",
-    coordinates: { x: 450, y: 150, lat: "23.7°N", lon: "47.4°W" },
-  },
-];
-
 export default function Moon() {
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
-
   return (
-    <main className="min-h-screen bg-gray-950 p-8 text-white">
-      <MoonMap
-        locations={mockLocations}
-        selectedLocationId={selectedLocationId}
-        onSelectLocation={setSelectedLocationId}
-      />
-    </main>
+    <div className="min-h-screen w-full bg-[#1b1c20] text-slate-200 p-6 flex flex-col justify-between">
+      {/* Blank space for top breadcrumb text ("Home / Selection / Moon") */}
+      <div className="h-8 w-full" />
+
+      {/* Main layout matching wireframe */}
+      <div className="flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+        {/* Left side: 2D Moon Map + HUD Telemetry Box below the map card */}
+        <div className="lg:col-span-8 flex flex-col gap-4">
+          <MoonMap />
+
+          {/* Blank spaces for Back and Next buttons */}
+          <div className="grid grid-cols-2 gap-4 h-14">
+            <div className="w-full h-full" />
+            <div className="w-full h-full" />
+          </div>
+        </div>
+
+        {/* Right side: Blank space for Criterias box (~35% width) */}
+        <div className="lg:col-span-4 w-full h-full" />
+      </div>
+
+      {/* Blank space at the very bottom */}
+      <div className="h-6 w-full" />
+    </div>
   );
 }
