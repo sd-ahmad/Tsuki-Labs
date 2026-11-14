@@ -2,8 +2,10 @@ import gc
 import json
 import math
 import re
+import sqlite3
 import sys
 import threading
+import zlib
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
@@ -11,7 +13,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 import numpy as np
 from scipy import sparse
 
-# Optional fast/streaming JSON parsers used only during one-time cache build
 try:
     import ijson  # type: ignore
 except ImportError:
@@ -23,7 +24,7 @@ except ImportError:
     orjson = None
 
 
-CACHE_SCHEMA_VERSION = 2
+CACHE_SCHEMA_VERSION = 3
 
 ALL_CONDITIONS_CATEGORY = "All Conditions"
 
@@ -161,7 +162,19 @@ def _latlon_to_xyz(lat_deg: np.ndarray, lon_deg: np.ndarray) -> np.ndarray:
     lat_r = np.radians(lat_deg)
     lon_r = np.radians(lon_deg)
     c = np.cos(lat_r)
-    return np.column_stack([c * math.cos(lon_r), c * math.sin(lon_r), np.sin(lat_r)]).astype(np.float32)
+    return np.column_stack([c * np.cos(lon_r), c * np.sin(lon_r), np.sin(lat_r)]).astype(np.float32)
+
+
+def _dump_json_bytes(obj: Dict[str, Any]) -> bytes:
+    if orjson is not None:
+        return orjson.dumps(obj)
+    return json.dumps(obj, separators=(",", ":")).encode("utf-8")
+
+
+def _load_json_bytes(raw: bytes) -> Dict[str, Any]:
+    if orjson is not None:
+        return orjson.loads(raw)
+    return json.loads(raw.decode("utf-8"))
 
 
 def _iter_json_kv(path: Path) -> Iterable[Tuple[str, Dict[str, Any]]]:
@@ -269,7 +282,7 @@ def _extract_geology_vector(cell: Dict[str, Any], body: str) -> Tuple[np.ndarray
                 parts.append(min(1.5, max(0.0, th / 6.0)))
             k_th_proxy = sum(parts) / len(parts)
 
-    else:  # moon
+    else:
         desc = " ".join(p for p in (geo.get("unit_name"), geo.get("unit_age"), geo.get("unit_code")) if p)
         feo = _f(geo.get("feo_wt_pct"))
         tio2 = _f(geo.get("tio2_wt_pct"))
@@ -525,70 +538,105 @@ def build_cache(
     out_dir = Path(cache_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Pack raw cell JSONs into compressed SQLite for O(1), near-zero-RAM runtime lookup
+    db_tmp = out_dir / "lookup.db.tmp"
+    db_final = out_dir / "lookup.db"
+    if db_tmp.exists():
+        db_tmp.unlink()
+
+    db_conn = sqlite3.connect(str(db_tmp))
+    db_conn.execute("PRAGMA journal_mode=OFF")
+    db_conn.execute("PRAGMA synchronous=OFF")
+    db_conn.execute(
+        "CREATE TABLE cells ("
+        "body TEXT NOT NULL, "
+        "cell_key TEXT NOT NULL, "
+        "data BLOB NOT NULL, "
+        "PRIMARY KEY (body, cell_key)"
+        ")"
+    )
+
     texts_by_body: Dict[str, List[str]] = {}
     corpus: List[str] = []
 
-    for body in ("mars", "moon", "earth"):
-        coords_list: List[Tuple[float, float]] = []
-        feat_rows: List[np.ndarray] = []
-        texts: List[str] = []
-        keys_list: List[str] = []
-        grid_map = np.full((180, 360), -1, dtype=np.int32) if body in ("mars", "moon") else None
+    try:
+        for body in ("mars", "moon", "earth"):
+            coords_list: List[Tuple[float, float]] = []
+            feat_rows: List[np.ndarray] = []
+            texts: List[str] = []
+            keys_list: List[str] = []
+            db_batch: List[Tuple[str, str, bytes]] = []
+            grid_map = np.full((180, 360), -1, dtype=np.int32) if body in ("mars", "moon") else None
 
-        for k, cell in _iter_json_kv(paths[body]):
-            if body == "earth" and not _is_earth_land_or_ice(cell):
-                continue
-            lat = _f(cell.get("lat_center"))
-            lon = _f(cell.get("lon_center"))
-            if math.isnan(lat) or math.isnan(lon):
-                continue
+            for k, cell in _iter_json_kv(paths[body]):
+                if body == "earth" and not _is_earth_land_or_ice(cell):
+                    continue
+                lat = _f(cell.get("lat_center"))
+                lon = _f(cell.get("lon_center"))
+                if math.isnan(lat) or math.isnan(lon):
+                    continue
 
-            idx = len(coords_list)
-            row, gtext = _extract_raw_row(cell, body)
-            coords_list.append((lon, lat))
-            feat_rows.append(row)
-            texts.append(gtext)
-            keys_list.append(k)
+                idx = len(coords_list)
+                row, gtext = _extract_raw_row(cell, body)
+                coords_list.append((lon, lat))
+                feat_rows.append(row)
+                texts.append(gtext)
+                keys_list.append(k)
 
-            if grid_map is not None:
-                try:
-                    lat_i_s, lon_i_s = k.split("_", 1)
-                    lat_i, lon_i = int(lat_i_s), int(lon_i_s)
-                    if -90 <= lat_i < 90 and -180 <= lon_i < 180:
-                        grid_map[lat_i + 90, lon_i + 180] = idx
-                except ValueError:
-                    pass
+                db_batch.append((body, k, zlib.compress(_dump_json_bytes(cell), level=6)))
+                if len(db_batch) >= 10000:
+                    db_conn.executemany("INSERT OR REPLACE INTO cells VALUES (?, ?, ?)", db_batch)
+                    db_conn.commit()
+                    db_batch.clear()
 
-        coords = np.asarray(coords_list, dtype=np.float32)
-        X_raw = np.asarray(feat_rows, dtype=np.float64)
-        del coords_list, feat_rows
-        gc.collect()
+                if grid_map is not None:
+                    try:
+                        lat_i_s, lon_i_s = k.split("_", 1)
+                        lat_i, lon_i = int(lat_i_s), int(lon_i_s)
+                        if -90 <= lat_i < 90 and -180 <= lon_i < 180:
+                            grid_map[lat_i + 90, lon_i + 180] = idx
+                    except ValueError:
+                        pass
 
-        X_aligned = _align_features(X_raw)
-        del X_raw
-        gc.collect()
+            if db_batch:
+                db_conn.executemany("INSERT OR REPLACE INTO cells VALUES (?, ?, ?)", db_batch)
+                db_conn.commit()
+                db_batch.clear()
 
-        np.save(out_dir / f"{body}_coords.npy", coords)
-        np.save(out_dir / f"{body}_keys.npy", np.asarray([s.encode("utf-8")[:16] for s in keys_list], dtype="S16"))
-        np.save(out_dir / f"{body}_texts.npy", np.asarray([t.encode("utf-8")[:160] for t in texts], dtype="S160"))
+            coords = np.asarray(coords_list, dtype=np.float32)
+            X_raw = np.asarray(feat_rows, dtype=np.float64)
+            del coords_list, feat_rows
+            gc.collect()
 
-        if body == "earth":
-            V_T = (~np.isnan(X_aligned)).astype(np.float32).T.copy()
-            X0_T = np.nan_to_num(X_aligned, nan=0.0).astype(np.float32).T.copy()
-            X0_sq_T = (X0_T ** 2).copy()
-            np.save(out_dir / "earth_V_T.npy", V_T)
-            np.save(out_dir / "earth_X0_T.npy", X0_T)
-            np.save(out_dir / "earth_X0_sq_T.npy", X0_sq_T)
-            del V_T, X0_T, X0_sq_T
-        else:
-            np.save(out_dir / f"{body}_features.npy", X_aligned)
-            np.save(out_dir / f"{body}_grid_map.npy", grid_map)
-            np.save(out_dir / f"{body}_xyz.npy", _latlon_to_xyz(coords[:, 1], coords[:, 0]))
+            X_aligned = _align_features(X_raw)
+            del X_raw
+            gc.collect()
 
-        texts_by_body[body] = texts
-        corpus.extend(t for t in texts if t.strip())
-        del X_aligned, coords, keys_list
-        gc.collect()
+            np.save(out_dir / f"{body}_coords.npy", coords)
+            np.save(out_dir / f"{body}_keys.npy", np.asarray([s.encode("utf-8")[:16] for s in keys_list], dtype="S16"))
+            np.save(out_dir / f"{body}_texts.npy", np.asarray([t.encode("utf-8")[:160] for t in texts], dtype="S160"))
+
+            if body == "earth":
+                V_T = (~np.isnan(X_aligned)).astype(np.float32).T.copy()
+                X0_T = np.nan_to_num(X_aligned, nan=0.0).astype(np.float32).T.copy()
+                X0_sq_T = (X0_T ** 2).copy()
+                np.save(out_dir / "earth_V_T.npy", V_T)
+                np.save(out_dir / "earth_X0_T.npy", X0_T)
+                np.save(out_dir / "earth_X0_sq_T.npy", X0_sq_T)
+                del V_T, X0_T, X0_sq_T
+            else:
+                np.save(out_dir / f"{body}_features.npy", X_aligned)
+                np.save(out_dir / f"{body}_grid_map.npy", grid_map)
+                np.save(out_dir / f"{body}_xyz.npy", _latlon_to_xyz(coords[:, 1], coords[:, 0]))
+
+            texts_by_body[body] = texts
+            corpus.extend(t for t in texts if t.strip())
+            del X_aligned, coords, keys_list
+            gc.collect()
+    finally:
+        db_conn.close()
+
+    db_tmp.replace(db_final)
 
     has_tfidf = False
     if corpus:
@@ -626,11 +674,6 @@ def build_cache(
 
 
 class PlanetaryAnalogMatcher:
-    """
-    Production-ready, memory-mapped, thread-safe planetary-to-Earth analog matcher.
-    Supports both single-category priority and balanced all-conditions matching.
-    """
-
     def __init__(
         self,
         earth_json_path: Union[str, Path] = "earth_0.25deg_lookup.json",
@@ -657,6 +700,8 @@ class PlanetaryAnalogMatcher:
 
         meta = json.loads((self.cache_dir / "meta.json").read_text(encoding="utf-8"))
         self.has_tfidf = bool(meta.get("has_tfidf", False))
+        self._db_path = (self.cache_dir / "lookup.db").resolve()
+        self._db_local = threading.local()
 
         self.earth_coords = np.load(self.cache_dir / "earth_coords.npy", mmap_mode="r")
         self.earth_keys = np.load(self.cache_dir / "earth_keys.npy", mmap_mode="r")
@@ -693,7 +738,8 @@ class PlanetaryAnalogMatcher:
 
     def _is_cache_valid(self, sources: Dict[str, Path]) -> bool:
         meta_path = self.cache_dir / "meta.json"
-        if not meta_path.exists():
+        db_path = self.cache_dir / "lookup.db"
+        if not meta_path.exists() or not db_path.exists():
             return False
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -712,12 +758,27 @@ class PlanetaryAnalogMatcher:
                 return False
         return True
 
+    def get_cell_data(self, body: str, cell_key: str) -> Optional[Dict[str, Any]]:
+        """Thread-safe O(1) fetch of the raw JSON object for any Earth/Mars/Moon cell."""
+        if not self._db_path.exists():
+            return None
+        conn = getattr(self._db_local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(f"{self._db_path.as_uri()}?mode=ro", uri=True, check_same_thread=False)
+            self._db_local.conn = conn
+        row = conn.execute(
+            "SELECT data FROM cells WHERE body = ? AND cell_key = ?",
+            (body, cell_key),
+        ).fetchone()
+        if row is None:
+            return None
+        return _load_json_bytes(zlib.decompress(row[0]))
+
     @staticmethod
     def _build_weight_vector(priority_cat: str, priority_weight: float = 0.78) -> np.ndarray:
         w = np.zeros(N_FEATURES, dtype=np.float32)
 
         if priority_cat == ALL_CONDITIONS_CATEGORY:
-            # Equal category-level weight across all available conditions
             per_cat_w = 1.0 / len(FEATURE_GROUPS)
             for cols in FEATURE_GROUPS.values():
                 per_col = per_cat_w / len(cols)
@@ -799,7 +860,6 @@ class PlanetaryAnalogMatcher:
         denom_safe = np.maximum(denom, 1e-6)
         mse /= denom_safe
 
-        # Coverage check: penalize Earth cells lacking features in active categories
         if canon_cat == ALL_CONDITIONS_CATEGORY:
             total_wq = float(w_act.sum())
             if total_wq > 0.0:
@@ -816,7 +876,6 @@ class PlanetaryAnalogMatcher:
                     prio_cov = (p_w @ self.earth_V_T[p_cols]) / p_max
                     mse += np.where(prio_cov < 0.35, 5.0 * (1.0 - prio_cov), 0.35 * (1.0 - prio_cov))
 
-        # Sparse CSC TF-IDF boost
         if self.has_tfidf and canon_cat in ("Geology & Mineralogy", ALL_CONDITIONS_CATEGORY):
             q_tfidf = self.body_tfidf_csr[body][src_idx]
             if q_tfidf.nnz > 0:
