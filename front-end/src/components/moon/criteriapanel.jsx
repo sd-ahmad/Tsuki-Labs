@@ -29,7 +29,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
         </p>
       </div>
 
-      {/* 6 Single-Select Priority Buttons with immersive hover zoom */}
+      {/* 6 Single-Select Priority Buttons with transparent silver-white hover */}
       <div className="flex flex-col justify-center items-center gap-3.5 w-full my-6 relative z-10">
         {PRIORITIES.map((item) => {
           const isSelected = selectedPriority === item.id;
@@ -40,7 +40,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
               className={`w-full rounded-xl px-5 py-4 text-base font-bold tracking-wide transition-all duration-300 ease-out border-2 flex items-center justify-center text-center font-mono cursor-pointer hover:scale-[1.02] ${
                 isSelected
                   ? "bg-gradient-to-r from-zinc-200 to-zinc-400 border-white text-zinc-950 shadow-lg shadow-zinc-300/20 scale-[1.02]"
-                  : "bg-[#1b1c22] border-zinc-800 text-zinc-300 hover:bg-[#24262e] hover:border-zinc-600 hover:text-white"
+                  : "bg-[#1b1c22] border-zinc-800 text-zinc-300 hover:bg-zinc-200/15 hover:border-zinc-300 hover:text-white"
               }`}
             >
               {item.label}
