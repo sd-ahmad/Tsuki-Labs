@@ -19,6 +19,12 @@ from analog_matcher import (
     init_matcher,
 )
 
+try:
+    import reverse_geocode  # type: ignore
+except ImportError:
+    reverse_geocode = None
+
+
 matcher = None
 
 CACHE_DIR = Path("analog_cache")
@@ -26,6 +32,7 @@ CACHE_URL = os.getenv("ANALOG_CACHE_URL", "")
 
 
 def ensure_cache() -> None:
+    """Downloads prebuilt analog_cache.tar.gz on fresh servers if ANALOG_CACHE_URL is set."""
     if (CACHE_DIR / "meta.json").exists() and (CACHE_DIR / "lookup.db").exists():
         return
     if not CACHE_URL:
@@ -33,7 +40,7 @@ def ensure_cache() -> None:
     archive = Path("analog_cache.tar.gz")
     urllib.request.urlretrieve(CACHE_URL, archive)
     with tarfile.open(archive, "r:gz") as tar:
-        tar.extractall(".")
+        tar.extractall(CACHE_DIR.parent)
     archive.unlink(missing_ok=True)
 
 
@@ -49,7 +56,7 @@ app = FastAPI(title="Planetary Analog Matcher API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your frontend domain in production
+    allow_origins=["*"],  # In production, replace with your frontend domain(s)
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -60,11 +67,21 @@ class AnalogRequest(BaseModel):
     longitude: float = Field(..., ge=-360.0, le=360.0)
     latitude: float = Field(..., ge=-90.0, le=90.0)
     astronomical_body: str = Field(..., description="'mars' or 'moon'")
-    priority_category: Optional[str] = None
+    priority_category: Optional[str] = Field(
+        default=None,
+        description="Priority category name, or null / 'All Conditions' for balanced matching",
+    )
     top_k: int = Field(default=3, ge=1, le=10)
 
 
-# --- Formatting Helpers ---
+# --- Formatting & Geo Helpers ---
+
+def _first_valid(*vals: Any) -> Any:
+    for v in vals:
+        if v is not None and v != "":
+            return v
+    return None
+
 
 def _num(val: Any, decimals: int = 2) -> Optional[float]:
     if val is None or isinstance(val, bool):
@@ -110,8 +127,88 @@ def _fmt_text(val: Any) -> Tuple[Optional[str], str]:
     return s, s
 
 
-def _compute_category_scores(body: str, src_idx: int, earth_lon: float, earth_lat: float) -> Dict[str, Optional[float]]:
-    """Computes 0-100% ML match score per category between query cell and an Earth match."""
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2.0 * r * math.asin(math.sqrt(min(1.0, a)))
+
+
+def _lookup_place_names(lat_lon_list: List[Tuple[float, float]]) -> List[Dict[str, Optional[str]]]:
+    if not lat_lon_list:
+        return []
+
+    results: List[Optional[Dict[str, Optional[str]]]] = [None] * len(lat_lon_list)
+    to_query_idx: List[int] = []
+    to_query_coords: List[Tuple[float, float]] = []
+
+    for i, (lat, lon) in enumerate(lat_lon_list):
+        if lat <= -60.0:
+            hemi = "East Antarctica" if lon >= 0.0 else "West Antarctica"
+            results[i] = {
+                "location_name": hemi,
+                "city": None,
+                "state": hemi,
+                "country": "Antarctica",
+                "country_code": "AQ",
+            }
+        else:
+            to_query_idx.append(i)
+            to_query_coords.append((lat, lon))
+
+    if to_query_coords and reverse_geocode is not None:
+        rg_hits = reverse_geocode.search(tuple(to_query_coords))
+        for idx, (lat, lon), hit in zip(to_query_idx, to_query_coords, rg_hits):
+            city = (hit.get("city") or "").strip()
+            state = (hit.get("state") or "").strip()
+            country = (hit.get("country") or "").strip()
+            cc = (hit.get("country_code") or "").strip()
+
+            dist_km = 999.0
+            if "latitude" in hit and "longitude" in hit:
+                dist_km = _haversine_km(lat, lon, float(hit["latitude"]), float(hit["longitude"]))
+
+            if state and state != city:
+                if dist_km <= 40.0 and city:
+                    name = f"{city}, {state}, {country}"
+                elif city:
+                    name = f"{state}, {country} (near {city})"
+                else:
+                    name = f"{state}, {country}"
+            else:
+                if dist_km <= 40.0 and city:
+                    name = f"{city}, {country}"
+                elif city:
+                    name = f"{country} (near {city})"
+                else:
+                    name = country or f"{lat:.2f}°, {lon:.2f}°"
+
+            results[idx] = {
+                "location_name": name.strip(", "),
+                "city": city or None,
+                "state": state or None,
+                "country": country or None,
+                "country_code": cc or None,
+            }
+
+    for i, (lat, lon) in enumerate(lat_lon_list):
+        if results[i] is None:
+            results[i] = {
+                "location_name": f"{lat:.2f}°, {lon:.2f}°",
+                "city": None,
+                "state": None,
+                "country": None,
+                "country_code": None,
+            }
+
+    return results  # type: ignore
+
+
+def _compute_category_scores(
+    body: str, src_idx: int, earth_lon: float, earth_lat: float
+) -> Dict[str, Optional[float]]:
     e_idx = int(
         np.argmin(
             (matcher.earth_coords[:, 0] - earth_lon) ** 2
@@ -143,28 +240,23 @@ def _build_comparison_table(
     src_data: Dict[str, Any],
     earth_cells: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """
-    Builds a structured comparison table across Source vs Top-3 Earth matches,
-    placing rows belonging to `priority_cat` at the top.
-    """
-    # Row spec: (key, label, category, unit, extractor_fn_for_mars_moon, extractor_fn_for_earth, mars_only)
     specs: List[Tuple[str, str, str, str, Callable, Callable, bool]] = [
         # Geology & Mineralogy
         (
             "geo_unit", "Geological Unit / Class", "Geology & Mineralogy", "",
-            lambda d: _fmt_text((d.get("geology") or {}).get("unit_desc") or (d.get("geology") or {}).get("unit_name")),
-            lambda d: _fmt_text((d.get("geology") or {}).get("unit_desc") or (d.get("geology") or {}).get("lith_class")),
+            lambda d: _fmt_text(_first_valid((d.get("geology") or {}).get("unit_desc"), (d.get("geology") or {}).get("unit_name"))),
+            lambda d: _fmt_text(_first_valid((d.get("geology") or {}).get("unit_desc"), (d.get("geology") or {}).get("lith_class"))),
             False,
         ),
         (
-            "geo_code", "Unit Code", "Geology & Mineralogy", "",
+            "geo_code", "Unit / Lithology Code", "Geology & Mineralogy", "",
             lambda d: _fmt_text((d.get("geology") or {}).get("unit_code")),
-            lambda d: _fmt_text((d.get("geology") or {}).get("lith_class") or (d.get("geology") or {}).get("unit_code")),
+            lambda d: _fmt_text(_first_valid((d.get("geology") or {}).get("lith_class"), (d.get("geology") or {}).get("unit_code"))),
             False,
         ),
         (
             "fe_pct", "Iron / FeO Content", "Geology & Mineralogy", "wt%",
-            lambda d: _fmt_num((d.get("geology") or {}).get("fe_wt_pct") or (d.get("geology") or {}).get("feo_wt_pct"), "wt%", 2),
+            lambda d: _fmt_num(_first_valid((d.get("geology") or {}).get("fe_wt_pct"), (d.get("geology") or {}).get("feo_wt_pct")), "wt%", 2),
             lambda d: (None, "—"),
             False,
         ),
@@ -354,7 +446,6 @@ def _build_comparison_table(
             }
         )
 
-    # Sort so priority category rows appear strictly at the top, preserving order within groups
     rows.sort(key=lambda r: (0 if r["is_priority"] else 1))
     return rows
 
@@ -367,7 +458,6 @@ def _build_charts(
     candidates: List[Dict[str, Any]],
     earth_cells: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    # 1. Category Similarity Radar Chart
     radar_cats = [
         c for c in PRIORITY_CATEGORIES
         if not (body == "moon" and c in MARS_ONLY_CATEGORIES)
@@ -382,29 +472,29 @@ def _build_charts(
             entry[f"candidate_{c['rank']}"] = c["category_scores"].get(cat)
         category_radar.append(entry)
 
-    # 2. Thermal Envelope Chart (Min, Max, Swing in °C)
-    thermal_envelope = []
-    all_points = [(src_label, src_data)] + [
-        (f"Match #{c['rank']}", e_cell) for c, e_cell in zip(candidates, earth_cells)
+    all_points = [(src_label, src_label, src_data)] + [
+        (f"Match #{c['rank']}", c["location_name"], e_cell)
+        for c, e_cell in zip(candidates, earth_cells)
     ]
-    for label, cell in all_points:
+
+    thermal_envelope = []
+    terrain_profile = []
+    for short_label, full_name, cell in all_points:
         thm = cell.get("thermal") or {}
+        ter = cell.get("terrain") or {}
         thermal_envelope.append(
             {
-                "location": label,
+                "location": short_label,
+                "location_name": full_name,
                 "temp_night_min_c": _k_to_c(thm.get("temp_night_min_k")),
                 "temp_day_max_c": _k_to_c(thm.get("temp_day_max_k")),
                 "diurnal_swing_c": _num(thm.get("diurnal_swing_k"), 1),
             }
         )
-
-    # 3. Terrain Profile Chart (Mean Slope, P95 Slope, Relief, Roughness)
-    terrain_profile = []
-    for label, cell in all_points:
-        ter = cell.get("terrain") or {}
         terrain_profile.append(
             {
-                "location": label,
+                "location": short_label,
+                "location_name": full_name,
                 "slope_mean_deg": _num(ter.get("slope_mean_deg"), 2),
                 "slope_p95_deg": _num(ter.get("slope_p95_deg"), 2),
                 "relief_m": _num(ter.get("relief_m"), 1),
@@ -440,6 +530,22 @@ def get_categories(body: Optional[str] = None):
     }
 
 
+@app.get("/api/cell")
+def get_cell_by_coords(body: str, longitude: float, latitude: float):
+    b = body.strip().lower()
+    if b not in ("mars", "moon"):
+        raise HTTPException(status_code=400, detail="body must be 'mars' or 'moon'")
+    idx = matcher._lookup_source_idx(longitude, latitude, b)
+    key = matcher.body_keys[b][idx].decode("utf-8", errors="ignore")
+    lon, lat = matcher.body_coords[b][idx]
+    return {
+        "key": key,
+        "longitude": float(lon),
+        "latitude": float(lat),
+        "data": matcher.get_cell_data(b, key),
+    }
+
+
 @app.post("/api/find-analogs")
 def find_analogs_endpoint(req: AnalogRequest):
     try:
@@ -456,14 +562,23 @@ def find_analogs_endpoint(req: AnalogRequest):
         src_idx = matcher._lookup_source_idx(req.longitude, req.latitude, body)
         src_data = matcher.get_cell_data(body, best["query_key"]) or {}
 
+        place_infos = _lookup_place_names(
+            [(m["earth_latitude"], m["earth_longitude"]) for m in matches]
+        )
+
         candidates: List[Dict[str, Any]] = []
         earth_cells: List[Dict[str, Any]] = []
-        for rank, m in enumerate(matches, 1):
+        for rank, (m, place) in enumerate(zip(matches, place_infos), 1):
             e_cell = matcher.get_cell_data("earth", m["earth_key"]) or {}
             earth_cells.append(e_cell)
             candidates.append(
                 {
                     "rank": rank,
+                    "location_name": place["location_name"],
+                    "city": place["city"],
+                    "state": place["state"],
+                    "country": place["country"],
+                    "country_code": place["country_code"],
                     "earth_longitude": m["earth_longitude"],
                     "earth_latitude": m["earth_latitude"],
                     "earth_key": m["earth_key"],
