@@ -3,13 +3,14 @@
 import { useRef, useState } from "react";
 import moonMapImage from "../../assets/moonmap.jpg";
 
-export default function MoonMap() {
+export default function MoonMap({ onSelectCoords = () => {} }) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [cursorCoords, setCursorCoords] = useState(null);
 
   const svgRef = useRef(null);
   const dragging = useRef(false);
+  const hasDragged = useRef(false);
   const lastPosition = useRef({ x: 0, y: 0 });
 
   const MIN_ZOOM = 1;
@@ -27,6 +28,31 @@ export default function MoonMap() {
       x: Math.min(maxPanX, Math.max(minPanX, x)),
       y: Math.min(maxPanY, Math.max(minPanY, y)),
     };
+  };
+
+  const calculateCoords = (e) => {
+    if (!svgRef.current) return null;
+    const rect = svgRef.current.getBoundingClientRect();
+
+    const clientX = e.clientX - rect.left;
+    const clientY = e.clientY - rect.top;
+
+    const svgX = (clientX / rect.width) * VIEWBOX_WIDTH;
+    const svgY = (clientY / rect.height) * VIEWBOX_HEIGHT;
+
+    const mapX = (svgX - offset.x) / zoom;
+    const mapY = (svgY - offset.y) / zoom;
+
+    if (mapX >= 0 && mapX <= VIEWBOX_WIDTH && mapY >= 0 && mapY <= VIEWBOX_HEIGHT) {
+      const rawLon = (mapX / VIEWBOX_WIDTH) * 360 - 180;
+      const rawLat = 90 - (mapY / VIEWBOX_HEIGHT) * 180;
+
+      const formattedLon = `${Math.abs(rawLon).toFixed(2)}° ${rawLon >= 0 ? "East" : "West"}`;
+      const formattedLat = `${Math.abs(rawLat).toFixed(2)}° ${rawLat >= 0 ? "North" : "South"}`;
+
+      return { lat: formattedLat, lon: formattedLon };
+    }
+    return null;
   };
 
   const handleWheel = (e) => {
@@ -52,39 +78,24 @@ export default function MoonMap() {
 
   const handlePointerDown = (e) => {
     dragging.current = true;
+    hasDragged.current = false;
     lastPosition.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e) => {
-    if (!svgRef.current) return;
+    const coords = calculateCoords(e);
+    setCursorCoords(coords);
+
+    if (!dragging.current || !svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
-
-    const clientX = e.clientX - rect.left;
-    const clientY = e.clientY - rect.top;
-
-    const svgX = (clientX / rect.width) * VIEWBOX_WIDTH;
-    const svgY = (clientY / rect.height) * VIEWBOX_HEIGHT;
-
-    const mapX = (svgX - offset.x) / zoom;
-    const mapY = (svgY - offset.y) / zoom;
-
-    if (mapX >= 0 && mapX <= VIEWBOX_WIDTH && mapY >= 0 && mapY <= VIEWBOX_HEIGHT) {
-      const rawLon = (mapX / VIEWBOX_WIDTH) * 360 - 180;
-      const rawLat = 90 - (mapY / VIEWBOX_HEIGHT) * 180;
-
-      const formattedLon = `${Math.abs(rawLon).toFixed(2)}° ${rawLon >= 0 ? "East" : "West"}`;
-      const formattedLat = `${Math.abs(rawLat).toFixed(2)}° ${rawLat >= 0 ? "North" : "South"}`;
-
-      setCursorCoords({ lat: formattedLat, lon: formattedLon });
-    } else {
-      setCursorCoords(null);
-    }
-
-    if (!dragging.current) return;
 
     const dxScreen = e.clientX - lastPosition.current.x;
     const dyScreen = e.clientY - lastPosition.current.y;
+
+    if (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3) {
+      hasDragged.current = true;
+    }
 
     const dxSvg = (dxScreen / rect.width) * VIEWBOX_WIDTH;
     const dySvg = (dyScreen / rect.height) * VIEWBOX_HEIGHT;
@@ -93,7 +104,13 @@ export default function MoonMap() {
     lastPosition.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e) => {
+    if (!hasDragged.current) {
+      const clickedCoords = calculateCoords(e);
+      if (clickedCoords) {
+        onSelectCoords(clickedCoords);
+      }
+    }
     dragging.current = false;
   };
 
@@ -103,9 +120,9 @@ export default function MoonMap() {
   };
 
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <div className="flex flex-col gap-4 w-full">
       {/* Map Box Container */}
-      <div className="w-full aspect-[2/1] rounded-xl overflow-hidden border border-slate-700 shadow-2xl bg-black relative select-none">
+      <div className="w-full aspect-[2/1] rounded-2xl overflow-hidden border-2 border-zinc-700/80 shadow-2xl bg-black relative select-none">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
@@ -131,16 +148,15 @@ export default function MoonMap() {
         </svg>
       </div>
 
-      {/* HUD Telemetry Bar positioned completely outside and beneath the map box */}
+      {/* Live Hover HUD Telemetry Bar below the map box (Compact single line format) */}
       <div className="w-full flex justify-center">
-        <div className="flex items-center gap-4 rounded-xl bg-[#141519] border border-slate-700 px-6 py-2.5 font-mono text-xs text-slate-200 shadow-xl">
-          <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
-          <span className="text-blue-300 font-semibold">
+        <div className="flex items-center gap-5 rounded-2xl bg-[#121317] border border-zinc-700/80 px-8 py-3.5 font-mono text-base text-zinc-200 shadow-xl whitespace-nowrap">
+          <span className="text-zinc-100 font-semibold">
             Latitude: {cursorCoords ? cursorCoords.lat : "---"}
           </span>
-          <span className="text-slate-600">|</span>
-          <span className="text-emerald-300 font-semibold">
-            Longitude: {cursorCoords ? cursorCoords.lon : "---"}
+          <span className="text-zinc-600 text-lg">|</span>
+          <span className="text-zinc-300 font-semibold">
+            Longitude : {cursorCoords ? cursorCoords.lon : "---"}
           </span>
         </div>
       </div>
