@@ -1,24 +1,20 @@
-// src/components/mars/Header.jsx
-export default function Header() {
-  return (
-    <header> 
-      {/* Semi-transparent overlay with a smooth bottom fade gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/70 to-black/95 backdrop-blur-[0.5px]" />
+// src/components/selection/SelectionHeader.jsx
 
+export default function SelectionHeader() {
+  return (
+    <header className="w-full px-8 py-7 flex items-center justify-between sticky top-0 z-50 relative overflow-hidden bg-gradient-to-b from-black/80 via-black/40 to-transparent">
       {/* Left Title Content */}
       <div className="flex items-center font-mono relative z-10">
-        <span className="text-sm font-bold tracking-widest uppercase text-amber-100/90 drop-shadow-md">
+        <span className="text-sm font-bold tracking-widest uppercase text-zinc-200 drop-shadow-md">
           NASA Space Apps 2026 // Project Wakusei Base
         </span>
       </div>
 
-      {/* Navigation Breadcrumb (Showing Mars) */}
+      {/* Navigation Breadcrumb (Highlighting Selection) */}
       <div className="relative z-10 flex items-center gap-2 font-mono text-sm text-zinc-400">
-        <a href="/" className="hover:text-amber-400 transition-colors">Home</a>
+        <a href="/" className="hover:text-zinc-200 transition-colors">Home</a>
         <span>/</span>
-        <a href="/selection" className="hover:text-amber-400 transition-colors">Selection</a>
-        <span>/</span>
-        <span className="text-amber-400 font-bold underline underline-offset-4">Mars</span>
+        <span className="text-zinc-100 font-bold underline underline-offset-4">Selection</span>
       </div>
     </header>
   );

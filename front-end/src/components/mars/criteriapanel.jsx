@@ -13,8 +13,13 @@ const PRIORITIES = [
   { id: "overall", label: "Best Overall" },
 ];
 
-export default function CriteriaPanel({ selectedCoords = null }) {
+export default function CriteriaPanel({ selectedCoords = null, onSelectPriority = () => {} }) {
   const [selectedPriority, setSelectedPriority] = useState(null);
+
+  const handlePriorityClick = (id) => {
+    setSelectedPriority(id);
+    onSelectPriority(id);
+  };
 
   return (
     <div className="flex flex-col justify-between items-center h-full w-full rounded-2xl border-2 border-amber-900/40 bg-[#161210] p-7 shadow-2xl text-amber-100 text-center relative overflow-hidden">
@@ -22,7 +27,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
       <div className="absolute -top-24 -right-24 w-64 h-64 bg-orange-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Header with balanced vertical spacing */}
+      {/* Header */}
       <div className="w-full flex flex-col items-center pt-1 pb-2 relative z-10">
         <h2 className="text-4xl font-black tracking-wider text-amber-100 font-mono uppercase drop-shadow">
           Priority
@@ -39,7 +44,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
           return (
             <button
               key={item.id}
-              onClick={() => setSelectedPriority(item.id)}
+              onClick={() => handlePriorityClick(item.id)}
               className={`w-full rounded-xl px-4 py-2.5 text-sm font-bold tracking-wide transition-all duration-300 ease-out border-2 flex items-center justify-center text-center font-mono cursor-pointer hover:scale-[1.02] ${
                 isSelected
                   ? "bg-gradient-to-r from-amber-200 via-amber-300 to-orange-300 border-amber-100 text-zinc-950 shadow-lg shadow-amber-500/20 scale-[1.02]"

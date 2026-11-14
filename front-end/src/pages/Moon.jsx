@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import MoonMap from "../components/moon/MoonMap";
-import CriteriaPanel from "../components/moon/CriteriaPanel";
+import CriteriaPanel from "../components/moon/criteriapanel";
 import Buttons from "../components/moon/buttons";
 import Header from "../components/moon/moonheader";
 
@@ -59,12 +59,25 @@ const FALLING_STARS = [
 
 export default function Moon() {
   const [selectedCoords, setSelectedCoords] = useState(null);
+  const [selectedPriority, setSelectedPriority] = useState(null);
 
   const handleBack = () => {
     window.location.href = "/selection"; 
   };
 
   const handleForward = () => {
+    if (!selectedCoords && !selectedPriority) {
+      alert("Please select target coordinates on the map and choose a priority criterion before proceeding.");
+      return;
+    }
+    if (!selectedCoords) {
+      alert("Please click a point on the map to select target coordinates.");
+      return;
+    }
+    if (!selectedPriority) {
+      alert("Please select a priority criterion.");
+      return;
+    }
     window.location.href = "/earth";
   };
 
@@ -96,47 +109,32 @@ export default function Moon() {
         ))}
       </div>
 
-      {/* Keyframes for Falling Stars reaching all the way to the bottom */}
       <style>{`
         @keyframes shootingStar {
-          0% {
-            transform: translateY(0) translateX(0) rotate(35deg);
-            opacity: 0;
-          }
-          10% {
-            opacity: 0.85;
-          }
-          85% {
-            opacity: 0.85;
-          }
-          98% {
-            transform: translateY(1200px) translateX(-700px) rotate(35deg);
-            opacity: 0;
-          }
-          100% {
-            transform: translateY(1200px) translateX(-700px) rotate(35deg);
-            opacity: 0;
-          }
+          0% { transform: translateY(0) translateX(0) rotate(35deg); opacity: 0; }
+          10% { opacity: 0.85; }
+          85% { opacity: 0.85; }
+          98% { transform: translateY(1200px) translateX(-700px) rotate(35deg); opacity: 0; }
+          100% { transform: translateY(1200px) translateX(-700px) rotate(35deg); opacity: 0; }
         }
       `}</style>
 
-      {/* Global Header with Smooth Fade into Black */}
       <div className="relative z-10">
         <Header />
       </div>
 
-      {/* Main Content Area */}
       <main className="flex-1 w-full max-w-[1700px] mx-auto p-8 flex flex-col justify-center relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center w-full">
-          {/* Left Column: 2D Moon Map, Buttons in-between, and Lat/Long HUD at the bottom */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full">
           <div className="lg:col-span-8 flex flex-col gap-4">
             <MoonMap onSelectCoords={(coords) => setSelectedCoords(coords)} />
             <Buttons onBack={handleBack} onForward={handleForward} />
           </div>
 
-          {/* Right Column: Priority Criteria Panel & Target Coordinates HUD */}
           <div className="lg:col-span-4 w-full h-full">
-            <CriteriaPanel selectedCoords={selectedCoords} />
+            <CriteriaPanel 
+              selectedCoords={selectedCoords} 
+              onSelectPriority={(priorityId) => setSelectedPriority(priorityId)} 
+            />
           </div>
         </div>
       </main>
