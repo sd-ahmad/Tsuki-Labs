@@ -5,6 +5,7 @@ import MoonMap from "../components/moon/MoonMap";
 import CriteriaPanel from "../components/moon/criteriapanel";
 import Buttons from "../components/moon/buttons";
 import Header from "../components/moon/moonheader";
+import { runAnalogAnalysis } from "../api/analogApi";
 
 const STATIC_STARS = [
   { top: "5%", left: "4%", size: "w-1 h-1", opacity: "opacity-70", delay: "0s" },
@@ -60,43 +61,44 @@ const FALLING_STARS = [
 export default function Moon() {
   const [selectedCoords, setSelectedCoords] = useState(null);
   const [selectedPriority, setSelectedPriority] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const handleBack = () => {
-    window.location.href = "/selection"; 
+    window.location.href = "/selection";
   };
 
-  const handleForward = () => {
-    if (!selectedCoords && !selectedPriority) {
-      alert("Please select target coordinates on the map and choose a priority criterion before proceeding.");
-      return;
-    }
+  const handleForward = async () => {
+    if (loading) return;
     if (!selectedCoords) {
       alert("Please click a point on the map to select target coordinates.");
       return;
     }
-    if (!selectedPriority) {
-      alert("Please select a priority criterion.");
-      return;
+
+    setLoading(true);
+    try {
+      await runAnalogAnalysis({
+        body: "moon",
+        coords: selectedCoords,
+        priority: selectedPriority,
+        topK: 3,
+      });
+      window.location.href = "/earth";
+    } catch (err) {
+      alert(`Error finding Earth analogs: ${err.message}`);
+      setLoading(false);
     }
-    window.location.href = "/earth";
   };
 
   return (
     <div className="min-h-screen w-full bg-black text-zinc-100 flex flex-col justify-between selection:bg-zinc-700 selection:text-white relative overflow-hidden">
-      {/* Background Stars & Falling Stars Animation Layer */}
       <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
         {STATIC_STARS.map((star, idx) => (
           <div
             key={`star-${idx}`}
             className={`absolute bg-white rounded-full animate-pulse ${star.size} ${star.opacity}`}
-            style={{
-              top: star.top,
-              left: star.left,
-              animationDelay: star.delay,
-            }}
+            style={{ top: star.top, left: star.left, animationDelay: star.delay }}
           />
         ))}
-
         {FALLING_STARS.map((meteor, idx) => (
           <div
             key={`meteor-${idx}`}
@@ -123,17 +125,26 @@ export default function Moon() {
         <Header />
       </div>
 
+      {loading && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="border border-zinc-600 bg-zinc-950 px-8 py-6 rounded-2xl text-center font-mono">
+            <p className="text-zinc-100 text-lg font-bold">Analyzing Lunar Terrain & Matching Earth Analogs...</p>
+            <p className="text-zinc-400 text-xs mt-2">First request may take ~30s while the backend wakes up.</p>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 w-full max-w-[1700px] mx-auto p-8 flex flex-col justify-center relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full">
           <div className="lg:col-span-8 flex flex-col gap-4">
             <MoonMap onSelectCoords={(coords) => setSelectedCoords(coords)} />
-            <Buttons onBack={handleBack} onForward={handleForward} />
+            <Buttons onBack={handleBack} onForward={handleForward} loading={loading} />
           </div>
 
           <div className="lg:col-span-4 w-full h-full">
-            <CriteriaPanel 
-              selectedCoords={selectedCoords} 
-              onSelectPriority={(priorityId) => setSelectedPriority(priorityId)} 
+            <CriteriaPanel
+              selectedCoords={selectedCoords}
+              onSelectPriority={(priorityId) => setSelectedPriority(priorityId)}
             />
           </div>
         </div>
