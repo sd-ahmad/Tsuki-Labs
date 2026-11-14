@@ -29,7 +29,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
         </p>
       </div>
 
-      {/* 6 Single-Select Priority Buttons */}
+      {/* 6 Single-Select Priority Buttons with immersive hover zoom */}
       <div className="flex flex-col justify-center items-center gap-3.5 w-full my-6 relative z-10">
         {PRIORITIES.map((item) => {
           const isSelected = selectedPriority === item.id;
@@ -37,7 +37,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
             <button
               key={item.id}
               onClick={() => setSelectedPriority(item.id)}
-              className={`w-full rounded-xl px-5 py-4 text-base font-bold tracking-wide transition-all duration-200 border-2 flex items-center justify-center text-center font-mono ${
+              className={`w-full rounded-xl px-5 py-4 text-base font-bold tracking-wide transition-all duration-300 ease-out border-2 flex items-center justify-center text-center font-mono cursor-pointer hover:scale-[1.02] ${
                 isSelected
                   ? "bg-gradient-to-r from-zinc-200 to-zinc-400 border-white text-zinc-950 shadow-lg shadow-zinc-300/20 scale-[1.02]"
                   : "bg-[#1b1c22] border-zinc-800 text-zinc-300 hover:bg-[#24262e] hover:border-zinc-600 hover:text-white"
@@ -49,7 +49,7 @@ export default function CriteriaPanel({ selectedCoords = null }) {
         })}
       </div>
 
-      {/* Clicked Target Coordinates HUD below Best Overall (Forced single-line compact layout) */}
+      {/* Clicked Target Coordinates HUD below Best Overall */}
       <div className="w-full relative z-10">
         <div className="w-full rounded-2xl bg-[#18191f] border-2 border-zinc-700/90 px-5 py-4 font-mono shadow-inner flex flex-col items-center justify-center gap-2">
           <span className="text-xs uppercase tracking-widest text-zinc-400 font-semibold">

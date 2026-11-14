@@ -1,14 +1,16 @@
 // src/components/moon/MoonMap.jsx
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import moonMapImage from "../../assets/moonmap.jpg";
 
 export default function MoonMap({ onSelectCoords = () => {} }) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [cursorCoords, setCursorCoords] = useState(null);
+  const [isHovered, setIsHovered] = useState(false);
 
   const svgRef = useRef(null);
+  const containerRef = useRef(null);
   const dragging = useRef(false);
   const hasDragged = useRef(false);
   const lastPosition = useRef({ x: 0, y: 0 });
@@ -17,6 +19,23 @@ export default function MoonMap({ onSelectCoords = () => {} }) {
   const MAX_ZOOM = 8;
   const VIEWBOX_WIDTH = 8192;
   const VIEWBOX_HEIGHT = 4096;
+
+  // Prevent page scroll when hovering over the moon map container
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheelGlobal = (e) => {
+      if (isHovered) {
+        e.preventDefault();
+      }
+    };
+
+    container.addEventListener("wheel", handleWheelGlobal, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleWheelGlobal);
+    };
+  }, [isHovered]);
 
   const clampOffset = (x, y, currentZoom) => {
     const maxPanX = 0;
@@ -44,11 +63,15 @@ export default function MoonMap({ onSelectCoords = () => {} }) {
     const mapY = (svgY - offset.y) / zoom;
 
     if (mapX >= 0 && mapX <= VIEWBOX_WIDTH && mapY >= 0 && mapY <= VIEWBOX_HEIGHT) {
-      const rawLon = (mapX / VIEWBOX_WIDTH) * 360 - 180;
-      const rawLat = 90 - (mapY / VIEWBOX_HEIGHT) * 180;
+      let rawLon = (mapX / VIEWBOX_WIDTH) * 360 - 180;
+      let rawLat = 90 - (mapY / VIEWBOX_HEIGHT) * 180;
 
-      const formattedLon = `${Math.abs(rawLon).toFixed(2)}° ${rawLon >= 0 ? "East" : "West"}`;
-      const formattedLat = `${Math.abs(rawLat).toFixed(2)}° ${rawLat >= 0 ? "North" : "South"}`;
+      // Clamp boundaries between -90 and 90 for latitude, -180 and 180 for longitude
+      rawLat = Math.max(-90, Math.min(90, rawLat));
+      rawLon = Math.max(-180, Math.min(180, rawLon));
+
+      const formattedLat = `${rawLat >= 0 ? `+${rawLat.toFixed(2)}` : rawLat.toFixed(2)}°`;
+      const formattedLon = `${rawLon >= 0 ? `+${rawLon.toFixed(2)}` : rawLon.toFixed(2)}°`;
 
       return { lat: formattedLat, lon: formattedLon };
     }
@@ -117,12 +140,22 @@ export default function MoonMap({ onSelectCoords = () => {} }) {
   const handlePointerLeave = () => {
     dragging.current = false;
     setCursorCoords(null);
+    setIsHovered(false);
   };
 
   return (
-    <div className="flex flex-col gap-4 w-full">
-      {/* Map Box Container */}
-      <div className="w-full aspect-[2/1] rounded-2xl overflow-hidden border-2 border-zinc-700/80 shadow-2xl bg-black relative select-none">
+    <div 
+      ref={containerRef} 
+      className="flex flex-col gap-4 w-full"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      {/* Map Box Container with subtle immersive hover scaling */}
+      <div 
+        className={`w-full aspect-[2/1] rounded-2xl overflow-hidden border-2 border-zinc-700/80 shadow-2xl bg-black relative select-none transition-transform duration-500 ease-out ${
+          isHovered ? "scale-[1.015] shadow-zinc-500/10 border-zinc-500" : "scale-100"
+        }`}
+      >
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
@@ -148,7 +181,7 @@ export default function MoonMap({ onSelectCoords = () => {} }) {
         </svg>
       </div>
 
-      {/* Live Hover HUD Telemetry Bar below the map box (Compact single line format) */}
+      {/* Live Hover HUD Telemetry Bar at the very bottom (2 decimal places, ±90 / ±180 bounds) */}
       <div className="w-full flex justify-center">
         <div className="flex items-center gap-5 rounded-2xl bg-[#121317] border border-zinc-700/80 px-8 py-3.5 font-mono text-base text-zinc-200 shadow-xl whitespace-nowrap">
           <span className="text-zinc-100 font-semibold">
@@ -156,7 +189,7 @@ export default function MoonMap({ onSelectCoords = () => {} }) {
           </span>
           <span className="text-zinc-600 text-lg">|</span>
           <span className="text-zinc-300 font-semibold">
-            Longitude : {cursorCoords ? cursorCoords.lon : "---"}
+            Longitude: {cursorCoords ? cursorCoords.lon : "---"}
           </span>
         </div>
       </div>
