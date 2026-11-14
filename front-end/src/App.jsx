@@ -9,6 +9,8 @@ import Earth from './pages/Earth'
 function App() {
   return (
     <BrowserRouter>
+      
+
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/selection" element={<SelectionPage />} />
