@@ -1,5 +1,5 @@
 import React from 'react';
-import SpaceWallpaperInteractive from '../components/SpaceWallpaperInteractive';
+import SpaceWallpaperInteractive from '../components/selection/SpaceWallpaperInteractive';
 
 export default function SelectionPage() {
   return (
