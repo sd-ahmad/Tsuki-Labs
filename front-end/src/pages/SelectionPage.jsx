@@ -1,6 +1,10 @@
 
-function SelectionPage() {
-  return <h1>Selection Page</h1>
-}
+import React from 'react';
 
-export default SelectionPage
+export default function SelectionPage() {
+  return (
+    <div className="text-white p-6">
+      <h1>Selection Page</h1>
+    </div>
+  );
+}
