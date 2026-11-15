@@ -6,7 +6,7 @@ export default function SelectionHeader() {
       {/* Left Title Content */}
       <div className="flex items-center font-mono relative z-10">
         <span className="text-sm font-bold tracking-widest uppercase text-zinc-200 drop-shadow-md">
-          NASA Space Apps 2026 // Project Wakusei Base
+          NASA Space Apps 2026 // Project Kagami
         </span>
       </div>
 

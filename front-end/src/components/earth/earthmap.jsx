@@ -28,7 +28,7 @@ export default function EarthMap({ candidates, onSelectCandidate }) {
 
     markerLayer.clearLayers();
     const bounds = [];
-    const colors = ["#38bdf8", "#a78bfa", "#34d399"];
+    const colors = ["#34d399", "#38bdf8", "#a78bfa"];
 
     candidates.forEach((c, i) => {
       const lat = c.earth_latitude;
@@ -58,8 +58,8 @@ export default function EarthMap({ candidates, onSelectCandidate }) {
   }, [candidates, onSelectCandidate]);
 
   return (
-    <div className="w-full h-full min-h-[420px] rounded-2xl border-2 border-zinc-700/80 bg-[#121317] overflow-hidden relative shadow-2xl flex flex-col font-mono">
-      <div className="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl border border-zinc-700 text-xs text-zinc-200 shadow-lg flex items-center gap-3">
+    <div className="w-full h-full min-h-[420px] rounded-2xl border-2 border-emerald-900/60 bg-[#121317] overflow-hidden relative shadow-2xl flex flex-col font-mono">
+      <div className="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl border border-emerald-800/70 text-xs text-emerald-50 shadow-lg flex items-center gap-3">
         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
         <span className="font-bold tracking-wider uppercase">Top 3 Earth Analog Locations</span>
       </div>

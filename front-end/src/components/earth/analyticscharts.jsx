@@ -11,7 +11,7 @@ export default function AnalyticsCharts({ chartsData }) {
   const thermalInstance = useRef(null);
   const terrainInstance = useRef(null);
 
-  const colors = ["#38bdf8", "#a78bfa", "#34d399"];
+  const colors = ["#34d399", "#38bdf8", "#a78bfa"];
 
   useEffect(() => {
     if (!chartsData) return;
@@ -37,7 +37,7 @@ export default function AnalyticsCharts({ chartsData }) {
               min: 0,
               max: 100,
               ticks: { backdropColor: "transparent", color: "#94a3b8" },
-              grid: { color: "#243049" },
+              grid: { color: "#1e3a32" },
               pointLabels: { color: "#cbd5e1", font: { size: 10 } },
             },
           },
@@ -54,7 +54,7 @@ export default function AnalyticsCharts({ chartsData }) {
         data: {
           labels: chartsData.thermal_envelope.map((x) => x.location),
           datasets: [
-            { label: "Night Min (°C)", data: chartsData.thermal_envelope.map((x) => x.temp_night_min_c), backgroundColor: "#60a5fa" },
+            { label: "Night Min (°C)", data: chartsData.thermal_envelope.map((x) => x.temp_night_min_c), backgroundColor: "#38bdf8" },
             { label: "Day Max (°C)", data: chartsData.thermal_envelope.map((x) => x.temp_day_max_c), backgroundColor: "#f97316" },
             { label: "Swing (°C)", data: chartsData.thermal_envelope.map((x) => x.diurnal_swing_c), backgroundColor: "#facc15" },
           ],
@@ -63,7 +63,7 @@ export default function AnalyticsCharts({ chartsData }) {
           maintainAspectRatio: false,
           scales: {
             x: { ticks: { color: "#94a3b8" } },
-            y: { ticks: { color: "#94a3b8" }, grid: { color: "#243049" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e3a32" } },
           },
           plugins: { legend: { labels: { color: "#e6edf7" } } },
         },
@@ -86,7 +86,7 @@ export default function AnalyticsCharts({ chartsData }) {
           maintainAspectRatio: false,
           scales: {
             x: { ticks: { color: "#94a3b8" } },
-            y: { ticks: { color: "#94a3b8" }, grid: { color: "#243049" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "#1e3a32" } },
           },
           plugins: { legend: { labels: { color: "#e6edf7" } } },
         },
@@ -96,22 +96,22 @@ export default function AnalyticsCharts({ chartsData }) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full font-mono">
-      <div className="rounded-2xl border-2 border-zinc-700/80 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
-        <h3 className="text-sm font-bold text-zinc-200 mb-2">Category Similarity (%)</h3>
+      <div className="rounded-2xl border-2 border-emerald-900/60 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
+        <h3 className="text-sm font-bold text-emerald-50 mb-2">Category Similarity (%)</h3>
         <div className="relative w-full h-64">
           <canvas ref={radarRef} />
         </div>
       </div>
 
-      <div className="rounded-2xl border-2 border-zinc-700/80 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
-        <h3 className="text-sm font-bold text-zinc-200 mb-2">Thermal Envelope (°C)</h3>
+      <div className="rounded-2xl border-2 border-emerald-900/60 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
+        <h3 className="text-sm font-bold text-emerald-50 mb-2">Thermal Envelope (°C)</h3>
         <div className="relative w-full h-64">
           <canvas ref={thermalRef} />
         </div>
       </div>
 
-      <div className="rounded-2xl border-2 border-zinc-700/80 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
-        <h3 className="text-sm font-bold text-zinc-200 mb-2">Terrain Slope Profile (°)</h3>
+      <div className="rounded-2xl border-2 border-emerald-900/60 bg-[#121317] p-5 shadow-xl flex flex-col justify-between">
+        <h3 className="text-sm font-bold text-emerald-50 mb-2">Terrain Slope Profile (°)</h3>
         <div className="relative w-full h-64">
           <canvas ref={terrainRef} />
         </div>

@@ -1,11 +1,17 @@
 // src/components/earth/AnalogsPanel.jsx
 export default function AnalogsPanel({ sourceLabel, priorityCategory, candidates, onSelectCard }) {
+  const displayMode = !priorityCategory || priorityCategory === "All Conditions" || priorityCategory === "Best Overall"
+    ? "Best Overall"
+    : priorityCategory;
+
   return (
-    <div className="flex flex-col h-full w-full rounded-2xl border-2 border-zinc-700/80 bg-[#121317] p-6 shadow-2xl text-zinc-200 font-mono relative overflow-hidden">
-      <div className="flex items-center justify-between pb-4 border-b border-zinc-800 mb-4">
-        <span className="text-sm font-bold text-white truncate max-w-[60%]">{sourceLabel || "Candidate Summary"}</span>
-        <span className="text-xs px-2.5 py-1 rounded-full bg-zinc-800 text-cyan-400 border border-zinc-700 truncate">
-          Mode: {priorityCategory || "All Conditions"}
+    <div className="flex flex-col h-full w-full rounded-2xl border-2 border-emerald-900/60 bg-[#121317] p-6 shadow-2xl text-emerald-50 font-mono relative overflow-hidden">
+      <div className="flex items-center justify-between gap-3 pb-4 border-b border-emerald-900/40 mb-4">
+        <span className="text-sm font-bold text-white truncate">
+          {sourceLabel || "Candidate Summary"}
+        </span>
+        <span className="text-xs px-3 py-1 rounded-full bg-[#0c1714] text-emerald-400 border border-emerald-800/70 shrink-0 whitespace-nowrap">
+          Mode: {displayMode}
         </span>
       </div>
 
@@ -14,21 +20,18 @@ export default function AnalogsPanel({ sourceLabel, priorityCategory, candidates
           <div
             key={i}
             onClick={() => onSelectCard && onSelectCard(c)}
-            className="bg-[#18191f] border border-zinc-800 hover:border-cyan-400 rounded-xl p-4 transition-all cursor-pointer flex flex-col gap-2 shadow-md group"
+            className="bg-[#0c1714] border border-emerald-900/50 hover:border-emerald-400 rounded-xl p-4 transition-all cursor-pointer flex flex-col justify-center gap-2 shadow-md group"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-extrabold text-white group-hover:text-cyan-400 transition-colors">
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-sm font-extrabold text-white group-hover:text-emerald-400 transition-colors leading-snug">
                 #{c.rank} {c.location_name}
               </span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold border bg-cyan-500/20 text-cyan-400 border-cyan-500/40">
+              <span className="text-xs px-3 py-1 rounded-full font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shrink-0 whitespace-nowrap">
                 {c.similarity_pct}% match
               </span>
             </div>
-            <div className="text-xs text-zinc-400">
+            <div className="text-xs text-emerald-200/70">
               Lat: {c.earth_latitude.toFixed(3)}, Lon: {c.earth_longitude.toFixed(3)}
-            </div>
-            <div className="text-[11px] text-zinc-500 truncate bg-black/40 px-2 py-1 rounded font-mono">
-              Geology: {c.earth_geology_desc || "N/A"}
             </div>
           </div>
         ))}
