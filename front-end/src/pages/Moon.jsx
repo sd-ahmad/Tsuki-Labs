@@ -1,7 +1,7 @@
 // src/pages/Moon.jsx
 
 import { useState } from "react";
-import MoonMap from "../components/moon/MoonMap";
+import MoonMap from "../components/moon/moonmap";
 import CriteriaPanel from "../components/moon/criteriapanel";
 import Buttons from "../components/moon/buttons";
 import Header from "../components/moon/moonheader";

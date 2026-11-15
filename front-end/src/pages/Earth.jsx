@@ -1,9 +1,9 @@
 // src/pages/Earth.jsx
 import { useState, useEffect } from "react";
 import Header from "../components/earth/earthheader";
-import EarthControls from "../components/earth/EarthControls";
+import EarthControls from "../components/earth/earthcontrols";
 import EarthMap from "../components/earth/earthmap";
-import AnalogsPanel from "../components/earth/AnalogsPanel";
+import AnalogsPanel from "../components/earth/analogspanel";
 import AnalyticsCharts from "../components/earth/analyticscharts";
 import ComparisonTable from "../components/earth/comparisontable";
 

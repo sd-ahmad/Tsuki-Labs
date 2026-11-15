@@ -1,7 +1,7 @@
 // src/pages/Mars.jsx
 
 import { useState } from "react";
-import MarsMap from "../components/mars/MarsMap";
+import MarsMap from "../components/mars/marsmap";
 import CriteriaPanel from "../components/mars/criteriapanel";
 import Buttons from "../components/mars/buttons";
 import Header from "../components/mars/marsheader";
